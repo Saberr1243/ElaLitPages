@@ -177,6 +177,19 @@ function isWebGame(repoName) {
   return String(repoName || '').toLowerCase().includes('bitlife');
 }
 
+function isLauncherRepo(repoUrl) {
+  return /github\.com[/:]saberr1243\/elalitpages(?:\.git)?\/?$/i.test(String(repoUrl || '').trim());
+}
+
+function getBundledGames() {
+  return [
+    { name: 'bitlife', label: 'BitLife', type: 'web' },
+    { name: 'endless-sky', label: 'Endless Sky', type: 'stream' },
+    { name: 'shattered-pixel-dungeon', label: 'Shattered Pixel Dungeon', type: 'stream' },
+    { name: 'cataclysm-dda', label: 'Cataclysm-DDA', type: 'stream' }
+  ].filter((game) => fs.existsSync(path.join(GAMES_ROOT, game.name)));
+}
+
 function detectBuildCommand(repoPath, repoName) {
   const files = {
     packageJson: path.join(repoPath, 'package.json'),
@@ -299,15 +312,24 @@ app.post('/api/launch', async (req, res) => {
     return res.status(400).json({ error: 'A GitHub repo URL is required.' });
   }
 
-  if (/github\.com[/:]saberr1243\/elalitpages(?:\.git)?\/?$/i.test(repoUrl)) {
-    return res.status(400).json({
-      error: 'ElaLitPages is the launcher itself, not a game repository. Enter a game repository URL instead.'
+  const requestedGame = String(req.body.game || '').trim().toLowerCase();
+  if (isLauncherRepo(repoUrl) && !requestedGame) {
+    return res.json({
+      ok: true,
+      selectionRequired: true,
+      repoUrl,
+      games: getBundledGames()
     });
   }
 
   try {
-    const repoName = slugifyName(repoUrl);
-    const targetDir = prepareRepoDir(repoName);
+    const repoName = isLauncherRepo(repoUrl) ? requestedGame : slugifyName(repoUrl);
+    const bundledGame = isLauncherRepo(repoUrl) && getBundledGames().find((game) => game.name === repoName);
+    if (isLauncherRepo(repoUrl) && !bundledGame) {
+      return res.status(400).json({ error: 'Choose one of the bundled games to launch.' });
+    }
+
+    const targetDir = bundledGame ? path.join(GAMES_ROOT, repoName) : prepareRepoDir(repoName);
     const logFile = path.join(GAMES_ROOT, `${repoName}.log`);
 
     const existing = ACTIVE_GAMES.get(repoName);
@@ -331,14 +353,18 @@ app.post('/api/launch', async (req, res) => {
     stopOtherActiveGames(repoName);
     stopStaleProcessesForRepo(repoName);
 
-    // Git refuses to clone into an existing non-empty directory. Make sure the target
-    // is absent or already a valid repo before trying to clone or pull.
-    if (!fs.existsSync(path.join(targetDir, '.git'))) {
-      appendLog(logFile, `Cloning ${repoUrl}\n`);
-      await cloneRepo(repoUrl, repoName);
+    if (!bundledGame) {
+      // Git refuses to clone into an existing non-empty directory. Make sure the target
+      // is absent or already a valid repo before trying to clone or pull.
+      if (!fs.existsSync(path.join(targetDir, '.git'))) {
+        appendLog(logFile, `Cloning ${repoUrl}\n`);
+        await cloneRepo(repoUrl, repoName);
+      } else {
+        appendLog(logFile, `Repository exists, syncing with remote\n`);
+        await cloneRepo(repoUrl, repoName);
+      }
     } else {
-      appendLog(logFile, `Repository exists, syncing with remote\n`);
-      await cloneRepo(repoUrl, repoName);
+      appendLog(logFile, `Using bundled game ${repoName}\n`);
     }
 
     const runPlan = detectBuildCommand(targetDir, repoName);

@@ -1,7 +1,6 @@
 .git
 .gitignore
 node_modules
-games
 *.log
 Dockerfile
 README.md

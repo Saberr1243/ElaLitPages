@@ -71,6 +71,51 @@ async function launchRepo() {
       return;
     }
 
+    if (result.selectionRequired) {
+      const choice = window.prompt(`Choose a bundled game:\n${result.games.map((game, index) => `${index + 1}. ${game.label}`).join('\n')}`, '1');
+      const selectedIndex = Number.parseInt(choice, 10) - 1;
+      const selectedGame = result.games[selectedIndex];
+      if (!selectedGame) {
+        statusBox.textContent = 'Choose a bundled game to launch.';
+        return;
+      }
+
+      repoUrlInput.value = `${repoUrl}#${selectedGame.name}`;
+      await launchRepoForGame(repoUrl, selectedGame.name);
+      return;
+    }
+
+    await openGameWindow(result);
+  } catch (error) {
+    statusBox.textContent = 'Desktop app could not start the repo.';
+    logOutput.textContent = String(error);
+  }
+}
+
+async function launchRepoForGame(repoUrl, game) {
+  statusBox.textContent = 'Starting bundled game...';
+  logOutput.textContent = 'Starting launch process...';
+
+  try {
+    const response = await fetch('/api/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repoUrl, game })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      statusBox.textContent = result.error || 'Launch failed.';
+      return;
+    }
+    await openGameWindow(result);
+  } catch (error) {
+    statusBox.textContent = 'Bundled game could not start.';
+    logOutput.textContent = String(error);
+  }
+}
+
+async function openGameWindow(result) {
+
     statusBox.textContent = `Opening a game window for ${result.repoName}...`;
     await fetchLogs(result.repoName);
 
@@ -90,10 +135,6 @@ async function launchRepo() {
     } else {
       statusBox.textContent = `Running ${result.repoName} (${result.status}). Inline fallback is active below.`;
     }
-  } catch (error) {
-    statusBox.textContent = 'Desktop app could not start the repo.';
-    logOutput.textContent = String(error);
-  }
 }
 
 document.querySelectorAll('.sample-button').forEach((button) => {
