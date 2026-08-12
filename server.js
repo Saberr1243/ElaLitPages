@@ -183,11 +183,11 @@ function isLauncherRepo(repoUrl) {
 
 function getBundledGames() {
   return [
-    { name: 'bitlife', label: 'BitLife', type: 'web' },
-    { name: 'endless-sky', label: 'Endless Sky', type: 'stream' },
-    { name: 'shattered-pixel-dungeon', label: 'Shattered Pixel Dungeon', type: 'stream' },
-    { name: 'cataclysm-dda', label: 'Cataclysm-DDA', type: 'stream' }
-  ].filter((game) => fs.existsSync(path.join(GAMES_ROOT, game.name)));
+    { name: 'bitlife', label: 'BitLife', type: 'web', repoUrl: 'https://github.com/Lugapps-games/bitlife.git' },
+    { name: 'endless-sky', label: 'Endless Sky', type: 'stream', repoUrl: 'https://github.com/endless-sky/endless-sky.git' },
+    { name: 'shattered-pixel-dungeon', label: 'Shattered Pixel Dungeon', type: 'stream', repoUrl: 'https://github.com/00-Evan/shattered-pixel-dungeon.git' },
+    { name: 'cataclysm-dda', label: 'Cataclysm-DDA', type: 'stream', repoUrl: 'https://github.com/CleverRaven/Cataclysm-DDA.git' }
+  ];
 }
 
 function detectBuildCommand(repoPath, repoName) {
@@ -329,7 +329,9 @@ app.post('/api/launch', async (req, res) => {
       return res.status(400).json({ error: 'Choose one of the bundled games to launch.' });
     }
 
-    const targetDir = bundledGame ? path.join(GAMES_ROOT, repoName) : prepareRepoDir(repoName);
+    const targetDir = bundledGame && repoName === 'bitlife' && fs.existsSync(path.join(GAMES_ROOT, repoName))
+      ? path.join(GAMES_ROOT, repoName)
+      : prepareRepoDir(repoName);
     const logFile = path.join(GAMES_ROOT, `${repoName}.log`);
 
     const existing = ACTIVE_GAMES.get(repoName);
@@ -353,15 +355,16 @@ app.post('/api/launch', async (req, res) => {
     stopOtherActiveGames(repoName);
     stopStaleProcessesForRepo(repoName);
 
-    if (!bundledGame) {
+    if (!bundledGame || targetDir !== path.join(GAMES_ROOT, 'bitlife')) {
       // Git refuses to clone into an existing non-empty directory. Make sure the target
       // is absent or already a valid repo before trying to clone or pull.
+      const launchRepoUrl = bundledGame ? bundledGame.repoUrl : repoUrl;
       if (!fs.existsSync(path.join(targetDir, '.git'))) {
-        appendLog(logFile, `Cloning ${repoUrl}\n`);
-        await cloneRepo(repoUrl, repoName);
+        appendLog(logFile, `Cloning ${launchRepoUrl}\n`);
+        await cloneRepo(launchRepoUrl, repoName);
       } else {
         appendLog(logFile, `Repository exists, syncing with remote\n`);
-        await cloneRepo(repoUrl, repoName);
+        await cloneRepo(launchRepoUrl, repoName);
       }
     } else {
       appendLog(logFile, `Using bundled game ${repoName}\n`);
