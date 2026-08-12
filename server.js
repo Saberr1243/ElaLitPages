@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const httpProxy = require('http-proxy');
 const fs = require('fs');
 const path = require('path');
 const { spawn, execFile, execFileSync } = require('child_process');
@@ -7,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const GAMES_ROOT = path.join(__dirname, 'games');
 const ACTIVE_GAMES = new Map();
+const webSocketProxy = httpProxy.createProxyServer({});
 
 fs.mkdirSync(GAMES_ROOT, { recursive: true });
 
@@ -155,14 +158,7 @@ function getStreamUrl(req) {
     return null;
   }
 
-  let streamHost = resolvedHost;
-  if (resolvedHost.includes(':3000')) {
-    streamHost = resolvedHost.replace(':3000', ':6080');
-  } else if (resolvedHost.includes('-3000.')) {
-    streamHost = resolvedHost.replace('-3000.', '-6080.');
-  }
-
-  return `${protocol}://${streamHost}/vnc_lite.html?autoconnect=1&path=websockify&resize=off&reconnect=1&view_only=false&show_dot=true`;
+  return `${protocol}://${resolvedHost}/novnc/vnc_lite.html?autoconnect=1&path=websockify&resize=off&reconnect=1&view_only=false&show_dot=true`;
 }
 
 function needsStream(repoName) {
@@ -470,6 +466,17 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url.startsWith('/websockify')) {
+    socket.destroy();
+    return;
+  }
+
+  webSocketProxy.ws(req, socket, head, { target: 'http://127.0.0.1:6080' });
+});
+
+server.listen(PORT, () => {
   console.log(`Game launcher running at http://localhost:${PORT}`);
 });

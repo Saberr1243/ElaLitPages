@@ -137,6 +137,8 @@
       let logTimer = null;
       let lastLogText = '';
       let pollInFlight = false;
+      let reconnectTimer = null;
+      let streamConnection = null;
 
       function stopLogPolling() {
         if (logTimer) {
@@ -214,6 +216,12 @@
 
       window.addEventListener('beforeunload', () => {
         stopLogPolling();
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+        }
+        if (streamConnection) {
+          streamConnection.disconnect();
+        }
       });
 
       function normalizeStreamUrl(streamUrl) {
@@ -236,14 +244,14 @@
 
       async function mountNoVnc(streamUrl) {
         const { default: RFB } = await import('/novnc/core/rfb.js');
-        const stream = new URL(streamUrl);
-        const wsProtocol = stream.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${stream.host}/websockify`;
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/websockify`;
 
         gameArea.innerHTML = '<div id="novncCanvas" class="stream-canvas"></div>';
         const target = document.getElementById('novncCanvas');
 
         const rfb = new RFB(target, wsUrl, { shared: true });
+        streamConnection = rfb;
         rfb.viewOnly = false;
         rfb.scaleViewport = true;
         rfb.resizeSession = false;
@@ -255,7 +263,15 @@
         });
 
         rfb.addEventListener('disconnect', () => {
-          status.textContent = 'Disconnected from game stream.';
+          if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+          }
+          status.textContent = 'Waiting for game stream...';
+          reconnectTimer = setTimeout(() => {
+            if (streamConnection === rfb) {
+              rfb.connect(wsUrl);
+            }
+          }, 1500);
         });
 
         target.tabIndex = 0;
