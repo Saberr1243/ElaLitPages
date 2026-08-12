@@ -1,6 +1,10 @@
 .git
 .gitignore
 node_modules
+games/*
+!games/
+!games/bitlife/
+!games/bitlife/**
 *.log
 Dockerfile
 README.md
