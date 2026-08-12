@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game Window</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, sans-serif;
+        background: #060816;
+        color: #f2f7ff;
+        overflow: hidden;
+      }
+      .fullscreen-game {
+        position: fixed;
+        inset: 0;
+        background: #000;
+      }
+      .overlay {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        z-index: 2;
+        pointer-events: none;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .chip {
+        pointer-events: auto;
+        background: rgba(4, 10, 24, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+      .chip-button {
+        cursor: pointer;
+        color: #f2f7ff;
+      }
+      iframe {
+        width: 100%;
+        min-height: 560px;
+        border: 0;
+        border-radius: 12px;
+        background: #000;
+      }
+      .status-box {
+        padding: 14px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .stream-frame {
+        width: 100%;
+        min-height: 620px;
+        border: 0;
+        border-radius: 12px;
+        background: #000;
+      }
+      .stream-canvas {
+        width: 100vw;
+        height: 100vh;
+        min-height: 0;
+        border-radius: 0;
+        overflow: hidden;
+        background: #000;
+      }
+      .log-panel {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 3;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(2, 8, 18, 0.88);
+        padding: 10px;
+        max-height: 38vh;
+      }
+      .log-panel.hidden {
+        display: none;
+      }
+      .log-title {
+        margin: 0 0 8px 0;
+        color: #9fdfff;
+        font-size: 12px;
+        letter-spacing: 0.03em;
+      }
+      .log-output {
+        margin: 0;
+        min-height: 140px;
+        max-height: calc(38vh - 40px);
+        overflow: auto;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(0, 0, 0, 0.5);
+        color: #bfd0ea;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.35;
+        padding: 10px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fullscreen-game">
+      <div id="gameArea"></div>
+      <div class="overlay">
+        <strong id="title" class="chip">Game window</strong>
+        <div>
+          <span id="status" class="chip">Preparing game view...</span>
+          <button id="toggleFullscreen" class="chip chip-button" type="button">Fullscreen</button>
+          <button id="toggleLogs" class="chip chip-button" type="button">Hide logs</button>
+        </div>
+      </div>
+      <div id="logPanel" class="log-panel">
+        <p class="log-title">Live launch logs</p>
+        <pre id="liveLogs" class="log-output">Waiting for logs...</pre>
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const repo = params.get('repo');
+      const title = document.getElementById('title');
+      const status = document.getElementById('status');
+      const gameArea = document.getElementById('gameArea');
+      const logPanel = document.getElementById('logPanel');
+      const liveLogs = document.getElementById('liveLogs');
+      const toggleLogsButton = document.getElementById('toggleLogs');
+      const toggleFullscreenButton = document.getElementById('toggleFullscreen');
+
+      let logTimer = null;
+      let lastLogText = '';
+      let pollInFlight = false;
+
+      function stopLogPolling() {
+        if (logTimer) {
+          clearInterval(logTimer);
+          logTimer = null;
+        }
+      }
+
+      function tailText(text, maxLines = 180) {
+        const lines = text.split('\n');
+        if (lines.length <= maxLines) return text;
+        return lines.slice(-maxLines).join('\n');
+      }
+
+      async function refreshLogs(repoName) {
+        if (pollInFlight) return;
+        pollInFlight = true;
+        try {
+          const response = await fetch(`/api/logs/${encodeURIComponent(repoName)}?t=${Date.now()}`);
+          if (!response.ok) return;
+          const text = await response.text();
+          const trimmed = tailText(text || 'No output yet.');
+
+          if (trimmed === lastLogText) return;
+
+          const isNearBottom = liveLogs.scrollTop + liveLogs.clientHeight >= liveLogs.scrollHeight - 24;
+          liveLogs.textContent = trimmed;
+          lastLogText = trimmed;
+          if (isNearBottom) {
+            liveLogs.scrollTop = liveLogs.scrollHeight;
+          }
+        } catch {
+          // Keep the panel available even if one poll fails.
+        } finally {
+          pollInFlight = false;
+        }
+      }
+
+      function startLogPolling(repoName) {
+        stopLogPolling();
+        refreshLogs(repoName);
+        logTimer = setInterval(() => refreshLogs(repoName), 1500);
+      }
+
+      toggleLogsButton.addEventListener('click', () => {
+        const hidden = logPanel.classList.toggle('hidden');
+        toggleLogsButton.textContent = hidden ? 'Show logs' : 'Hide logs';
+      });
+
+      async function toggleFullscreen() {
+        try {
+          if (!document.fullscreenElement) {
+            await document.documentElement.requestFullscreen();
+            return;
+          }
+          await document.exitFullscreen();
+        } catch {
+          status.textContent = 'Fullscreen is blocked by this browser.';
+        }
+      }
+
+      toggleFullscreenButton.addEventListener('click', toggleFullscreen);
+
+      document.addEventListener('fullscreenchange', () => {
+        const isFullscreen = Boolean(document.fullscreenElement);
+        toggleFullscreenButton.textContent = isFullscreen ? 'Exit full screen' : 'Fullscreen';
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key && event.key.toLowerCase() === 'f') {
+          event.preventDefault();
+          toggleFullscreen();
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        stopLogPolling();
+      });
+
+      function normalizeStreamUrl(streamUrl) {
+        try {
+          const parsed = new URL(streamUrl);
+          if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+            const currentHost = window.location.host;
+            if (currentHost.includes('-3000.')) {
+              parsed.host = currentHost.replace('-3000.', '-6080.');
+            } else if (currentHost.includes(':3000')) {
+              parsed.host = currentHost.replace(':3000', ':6080');
+            }
+            parsed.protocol = window.location.protocol;
+          }
+          return parsed.toString();
+        } catch {
+          return streamUrl;
+        }
+      }
+
+      async function mountNoVnc(streamUrl) {
+        const { default: RFB } = await import('/novnc/core/rfb.js');
+        const stream = new URL(streamUrl);
+        const wsProtocol = stream.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${stream.host}/websockify`;
+
+        gameArea.innerHTML = '<div id="novncCanvas" class="stream-canvas"></div>';
+        const target = document.getElementById('novncCanvas');
+
+        const rfb = new RFB(target, wsUrl, { shared: true });
+        rfb.viewOnly = false;
+        rfb.scaleViewport = true;
+        rfb.resizeSession = false;
+        rfb.showDotCursor = true;
+
+        rfb.addEventListener('connect', () => {
+          status.textContent = 'Connected. Click inside to interact.';
+          target.focus();
+        });
+
+        rfb.addEventListener('disconnect', () => {
+          status.textContent = 'Disconnected from game stream.';
+        });
+
+        target.tabIndex = 0;
+        target.addEventListener('click', () => target.focus());
+        window.addEventListener('resize', () => {
+          target.style.width = '100vw';
+          target.style.height = '100vh';
+        });
+      }
+
+      if (repo) {
+        title.textContent = repo;
+        status.textContent = 'Preparing local game launch…';
+        startLogPolling(repo);
+
+        const gameRoot = `/games/${repo}`;
+        fetch(`/api/games/${encodeURIComponent(repo)}`)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.webUrl) {
+              const webFrame = document.createElement('iframe');
+              webFrame.className = 'stream-frame';
+              webFrame.src = `${data.webUrl}?v=${Date.now()}`;
+              webFrame.title = repo;
+              webFrame.allowFullscreen = true;
+              gameArea.appendChild(webFrame);
+              status.textContent = 'Web game loaded. Click inside to play.';
+              return;
+            }
+
+            if (data.streamUrl) {
+              const streamUrl = normalizeStreamUrl(data.streamUrl);
+              status.textContent = 'Opening interactive game stream...';
+              mountNoVnc(streamUrl).catch(() => {
+                gameArea.innerHTML = `<div class="status-box"><p>Could not initialize embedded stream.</p><p><a href="${streamUrl}" target="_blank" style="color:#76e4ff">Open stream directly</a></p></div>`;
+                status.textContent = 'Stream initialization failed';
+              });
+              return;
+            }
+
+            if (data.executable) {
+              gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> is launching locally.</p><p>Executable: ${data.executable}</p><p>This environment may still need game runtime libraries installed before the binary can run.</p></div>`;
+              status.textContent = 'Game executable detected';
+            } else {
+              gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> was cloned locally, but no runnable executable was detected.</p><p>You can still inspect the project files at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
+              status.textContent = 'No executable found';
+            }
+          })
+          .catch(() => {
+            gameArea.innerHTML = `<div class="status-box"><p>The game files were not available yet.</p><p>Open the project folder at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
+            status.textContent = 'Unable to inspect game files';
+          });
+      } else {
+        status.textContent = 'No repo supplied';
+        logPanel.classList.add('hidden');
+      }
+    </script>
+  </body>
+</html>

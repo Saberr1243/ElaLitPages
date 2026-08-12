@@ -1,0 +1,7 @@
+node_modules/
+games/*/
+games/*.log
+.env
+.env.*
+!.env.example
+npm-debug.log*

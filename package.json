@@ -1,0 +1,12 @@
+{
+  "name": "game-github-launcher",
+  "version": "1.0.0",
+  "description": "Launch open-source game repositories from a web interface",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

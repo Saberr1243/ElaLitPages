@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game GitHub Launcher</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OPEN SOURCE ARCADE</p>
+          <h1>Game GitHub Launcher</h1>
+        </div>
+      </header>
+
+      <main class="panel">
+        <section class="launcher-card">
+          <h2>Launch a game repo</h2>
+
+          <div class="repo-input-row">
+            <input id="repoUrl" type="text" value="https://github.com/endless-sky/endless-sky.git" placeholder="https://github.com/owner/repo.git" />
+            <button id="launchBtn">Launch / Play</button>
+          </div>
+
+          <div class="quick-links">
+            <button class="sample-button" data-url="https://github.com/endless-sky/endless-sky.git">Endless Sky</button>
+            <button class="sample-button" data-url="https://github.com/00-Evan/shattered-pixel-dungeon.git">Shattered Pixel Dungeon</button>
+            <button class="sample-button" data-url="https://github.com/CleverRaven/Cataclysm-DDA.git">Cataclysm-DDA</button>
+            <button class="sample-button" data-url="https://github.com/Lugapps-games/bitlife.git">BitLife</button>
+            <button class="sample-button" data-url="https://github.com/Marak/faker.js.git">Faker.js</button>
+            <button class="sample-button" data-url="https://github.com/ValveSoftware/counter-strike.git">CS Demo</button>
+          </div>
+
+          <div id="statusBox" class="status-box">Ready to launch a game repository.</div>
+        </section>
+
+        <section class="console-card">
+          <h3>Launch log</h3>
+          <pre id="logOutput">No output yet.</pre>
+        </section>
+      </main>
+
+      <section id="inlineSection" class="inline-section hidden">
+        <div class="inline-header">
+          <h3>Inline game view (fallback)</h3>
+          <p>If the popup fails or goes blank, use this embedded view.</p>
+          <button id="inlineFullscreenBtn" type="button" class="inline-fullscreen-btn">Fullscreen inline game</button>
+        </div>
+        <iframe id="inlineFrame" title="Inline game view" allowfullscreen></iframe>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
