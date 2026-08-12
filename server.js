@@ -299,6 +299,12 @@ app.post('/api/launch', async (req, res) => {
     return res.status(400).json({ error: 'A GitHub repo URL is required.' });
   }
 
+  if (/github\.com[/:]saberr1243\/elalitpages(?:\.git)?\/?$/i.test(repoUrl)) {
+    return res.status(400).json({
+      error: 'ElaLitPages is the launcher itself, not a game repository. Enter a game repository URL instead.'
+    });
+  }
+
   try {
     const repoName = slugifyName(repoUrl);
     const targetDir = prepareRepoDir(repoName);
