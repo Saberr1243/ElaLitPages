@@ -534,7 +534,8 @@ server.on('upgrade', (req, socket, head) => {
 
   webSocketProxy.ws(req, socket, head, {
     target: 'ws://127.0.0.1:6080',
-    ws: true
+    ws: true,
+    changeOrigin: true
   });
 });
 
