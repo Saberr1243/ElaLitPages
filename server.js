@@ -71,6 +71,15 @@ function appendLog(logFile, text) {
   fs.appendFileSync(logFile, text, 'utf8');
 }
 
+function isLocalPortListening(port) {
+  try {
+    execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isProcessRunning(pid) {
   if (!pid) return false;
   try {
@@ -292,6 +301,13 @@ function cloneRepo(repoUrl, repoName) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, message: 'Game launcher is running' });
+});
+
+app.get('/api/stream-status', (_req, res) => {
+  res.json({
+    vncReady: isLocalPortListening(5900),
+    websockifyReady: isLocalPortListening(6080)
+  });
 });
 
 app.get('/api/games', (_req, res) => {
