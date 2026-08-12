@@ -11,6 +11,13 @@ const GAMES_ROOT = path.join(__dirname, 'games');
 const ACTIVE_GAMES = new Map();
 const webSocketProxy = httpProxy.createProxyServer({});
 
+webSocketProxy.on('error', (error, _req, socket) => {
+  console.error('Game stream proxy error:', error.message);
+  if (socket && !socket.destroyed) {
+    socket.destroy();
+  }
+});
+
 fs.mkdirSync(GAMES_ROOT, { recursive: true });
 
 app.use(express.json({ limit: '2mb' }));
