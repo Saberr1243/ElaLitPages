@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     novnc \
     websockify \
     xdotool \
-    xmessage \
+    x11-utils \
     xterm \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
