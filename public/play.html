@@ -288,42 +288,67 @@
         startLogPolling(repo);
 
         const gameRoot = `/games/${repo}`;
-        fetch(`/api/games/${encodeURIComponent(repo)}`)
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.webUrl) {
-              const webFrame = document.createElement('iframe');
-              webFrame.className = 'stream-frame';
-              webFrame.src = `${data.webUrl}?v=${Date.now()}`;
-              webFrame.title = repo;
-              webFrame.allowFullscreen = true;
-              gameArea.appendChild(webFrame);
-              status.textContent = 'Web game loaded. Click inside to play.';
-              return;
-            }
+        const maxAttempts = 150; // ~5 minutes at 2s intervals, covers large game clones
+        let attempt = 0;
 
-            if (data.streamUrl) {
-              const streamUrl = normalizeStreamUrl(data.streamUrl);
-              status.textContent = 'Opening interactive game stream...';
-              mountNoVnc(streamUrl).catch(() => {
-                gameArea.innerHTML = `<div class="status-box"><p>Could not initialize embedded stream.</p><p><a href="${streamUrl}" target="_blank" style="color:#76e4ff">Open stream directly</a></p></div>`;
-                status.textContent = 'Stream initialization failed';
-              });
-              return;
-            }
+        function pollGameInfo() {
+          attempt += 1;
+          fetch(`/api/games/${encodeURIComponent(repo)}?t=${Date.now()}`)
+            .then((response) => {
+              if (response.status === 404) {
+                throw new Error('not-found');
+              }
+              return response.json();
+            })
+            .then((data) => {
+              if (data.webUrl) {
+                const webFrame = document.createElement('iframe');
+                webFrame.className = 'stream-frame';
+                webFrame.src = `${data.webUrl}?v=${Date.now()}`;
+                webFrame.title = repo;
+                webFrame.allowFullscreen = true;
+                gameArea.appendChild(webFrame);
+                status.textContent = 'Web game loaded. Click inside to play.';
+                return;
+              }
 
-            if (data.executable) {
-              gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> is launching locally.</p><p>Executable: ${data.executable}</p><p>This environment may still need game runtime libraries installed before the binary can run.</p></div>`;
-              status.textContent = 'Game executable detected';
-            } else {
+              if (data.streamUrl) {
+                const streamUrl = normalizeStreamUrl(data.streamUrl);
+                status.textContent = 'Opening interactive game stream...';
+                mountNoVnc(streamUrl).catch(() => {
+                  gameArea.innerHTML = `<div class="status-box"><p>Could not initialize embedded stream.</p><p><a href="${streamUrl}" target="_blank" style="color:#76e4ff">Open stream directly</a></p></div>`;
+                  status.textContent = 'Stream initialization failed';
+                });
+                return;
+              }
+
+              if (data.executable) {
+                gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> is launching locally.</p><p>Executable: ${data.executable}</p><p>This environment may still need game runtime libraries installed before the binary can run.</p></div>`;
+                status.textContent = 'Game executable detected';
+                return;
+              }
+
+              if (attempt < maxAttempts) {
+                status.textContent = 'Downloading and preparing game files...';
+                setTimeout(pollGameInfo, 2000);
+                return;
+              }
+
               gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> was cloned locally, but no runnable executable was detected.</p><p>You can still inspect the project files at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
               status.textContent = 'No executable found';
-            }
-          })
-          .catch(() => {
-            gameArea.innerHTML = `<div class="status-box"><p>The game files were not available yet.</p><p>Open the project folder at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
-            status.textContent = 'Unable to inspect game files';
-          });
+            })
+            .catch(() => {
+              if (attempt < maxAttempts) {
+                status.textContent = 'Waiting for game files to be cloned...';
+                setTimeout(pollGameInfo, 2000);
+                return;
+              }
+              gameArea.innerHTML = `<div class="status-box"><p>The game files were not available yet.</p><p>Open the project folder at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
+              status.textContent = 'Unable to inspect game files';
+            });
+        }
+
+        pollGameInfo();
       } else {
         status.textContent = 'No repo supplied';
         logPanel.classList.add('hidden');

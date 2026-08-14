@@ -351,7 +351,7 @@ app.post('/api/launch', async (req, res) => {
     const logFile = path.join(GAMES_ROOT, `${repoName}.log`);
 
     const existing = ACTIVE_GAMES.get(repoName);
-    if (existing && isProcessRunning(existing.pid)) {
+    if (existing && (existing.status === 'starting' || isProcessRunning(existing.pid))) {
       return res.json({
         ok: true,
         repoName,
@@ -359,7 +359,7 @@ app.post('/api/launch', async (req, res) => {
         targetDir,
         command: existing.command,
         pid: existing.pid,
-        status: 'running',
+        status: existing.status,
         popupUrl: `/play.html?repo=${encodeURIComponent(repoName)}`,
         streamUrl: needsStream(repoName) ? getStreamUrl(req) : null,
         webUrl: isWebGame(repoName) ? `/games/${encodeURIComponent(repoName)}/index.html` : null,
@@ -371,65 +371,81 @@ app.post('/api/launch', async (req, res) => {
     stopOtherActiveGames(repoName);
     stopStaleProcessesForRepo(repoName);
 
-    if (!bundledGame || targetDir !== path.join(GAMES_ROOT, 'bitlife')) {
-      // Git refuses to clone into an existing non-empty directory. Make sure the target
-      // is absent or already a valid repo before trying to clone or pull.
-      const launchRepoUrl = bundledGame ? bundledGame.repoUrl : repoUrl;
-      if (!fs.existsSync(path.join(targetDir, '.git'))) {
-        appendLog(logFile, `Cloning ${launchRepoUrl}\n`);
-        await cloneRepo(launchRepoUrl, repoName);
-      } else {
-        appendLog(logFile, `Repository exists, syncing with remote\n`);
-        await cloneRepo(launchRepoUrl, repoName);
-      }
-    } else {
-      appendLog(logFile, `Using bundled game ${repoName}\n`);
-    }
-
-    const runPlan = detectBuildCommand(targetDir, repoName);
-    let commandOutput = `Starting ${repoName}\n`;
-    commandOutput += `Run method: ${runPlan.label}\n`;
-    commandOutput += `Command: ${runPlan.command}\n\n`;
-    appendLog(logFile, commandOutput);
-
-    const child = spawn('bash', ['-lc', runPlan.command], {
-      cwd: targetDir,
-      shell: false,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-
+    // Mark this repo as starting immediately so the request can return without
+    // waiting on a potentially multi-hundred-MB clone to finish. The frontend
+    // polls /api/games/:repoName and the log endpoint for progress instead.
     ACTIVE_GAMES.set(repoName, {
-      pid: child.pid,
+      pid: null,
+      status: 'starting',
       repoName,
       repoUrl,
-      command: runPlan.command,
+      command: null,
       logFile
     });
 
-    child.stdout.on('data', (chunk) => {
-      const text = chunk.toString();
-      appendLog(logFile, text);
-    });
+    (async () => {
+      try {
+        if (!bundledGame || targetDir !== path.join(GAMES_ROOT, 'bitlife')) {
+          // Git refuses to clone into an existing non-empty directory. Make sure the target
+          // is absent or already a valid repo before trying to clone or pull.
+          const launchRepoUrl = bundledGame ? bundledGame.repoUrl : repoUrl;
+          if (!fs.existsSync(path.join(targetDir, '.git'))) {
+            appendLog(logFile, `Cloning ${launchRepoUrl}\n`);
+            await cloneRepo(launchRepoUrl, repoName);
+          } else {
+            appendLog(logFile, `Repository exists, syncing with remote\n`);
+            await cloneRepo(launchRepoUrl, repoName);
+          }
+        } else {
+          appendLog(logFile, `Using bundled game ${repoName}\n`);
+        }
 
-    child.stderr.on('data', (chunk) => {
-      const text = chunk.toString();
-      appendLog(logFile, text);
-    });
+        const runPlan = detectBuildCommand(targetDir, repoName);
+        let commandOutput = `Starting ${repoName}\n`;
+        commandOutput += `Run method: ${runPlan.label}\n`;
+        commandOutput += `Command: ${runPlan.command}\n\n`;
+        appendLog(logFile, commandOutput);
 
-    child.on('exit', (code) => {
-      appendLog(logFile, `\nProcess exited with code ${code}\n`);
-      ACTIVE_GAMES.delete(repoName);
-    });
+        const child = spawn('bash', ['-lc', runPlan.command], {
+          cwd: targetDir,
+          shell: false,
+          detached: true,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        ACTIVE_GAMES.set(repoName, {
+          pid: child.pid,
+          status: 'running',
+          repoName,
+          repoUrl,
+          command: runPlan.command,
+          logFile
+        });
+
+        child.stdout.on('data', (chunk) => {
+          appendLog(logFile, chunk.toString());
+        });
+
+        child.stderr.on('data', (chunk) => {
+          appendLog(logFile, chunk.toString());
+        });
+
+        child.on('exit', (code) => {
+          appendLog(logFile, `\nProcess exited with code ${code}\n`);
+          ACTIVE_GAMES.delete(repoName);
+        });
+      } catch (error) {
+        appendLog(logFile, `\nLaunch failed: ${error.message || error}\n`);
+        ACTIVE_GAMES.delete(repoName);
+      }
+    })();
 
     res.json({
       ok: true,
       repoName,
       repoUrl,
       targetDir,
-      command: runPlan.command,
-      pid: child.pid,
-      status: 'running',
+      status: 'starting',
       popupUrl: `/play.html?repo=${encodeURIComponent(repoName)}`,
       streamUrl: needsStream(repoName) ? getStreamUrl(req) : null,
       webUrl: isWebGame(repoName) ? `/games/${encodeURIComponent(repoName)}/index.html` : null
