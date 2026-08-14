@@ -199,6 +199,11 @@ function getBundledGames() {
   ];
 }
 
+// These games run from a bundled asset, a system package, or a small prebuilt
+// release download, so cloning their (200MB-800MB) source repos is unnecessary
+// and was the main cause of hosting resource exhaustion.
+const SELF_CONTAINED_GAMES = new Set(['bitlife', 'endless-sky', 'shattered-pixel-dungeon', 'cataclysm-dda']);
+
 function detectBuildCommand(repoPath, repoName) {
   const files = {
     packageJson: path.join(repoPath, 'package.json'),
@@ -226,15 +231,15 @@ function detectBuildCommand(repoPath, repoName) {
 
   if (lowerName.includes('shattered-pixel-dungeon')) {
     return {
-      label: 'Shattered Pixel Dungeon (Gradle desktop + noVNC stream)',
-      command: `mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && if ! pgrep -x Xvfb >/dev/null; then nohup Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 & fi && for i in $(seq 1 25); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done && if ! pgrep -x openbox >/dev/null; then DISPLAY=:99 nohup openbox >/tmp/openbox.log 2>&1 & fi && if ! pgrep -x x11vnc >/dev/null; then x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -noxdamage -repeat -bg -o /tmp/x11vnc.log; fi && if ! lsof -iTCP:6080 -sTCP:LISTEN >/dev/null 2>&1; then websockify --web=/usr/share/novnc/ 6080 localhost:5900 --daemon; fi && export DISPLAY=:99 JAVA_TOOL_OPTIONS='-DSpecification-Title=ShatteredPixelDungeon -DSpecification-Version=3.0 -DImplementation-Title=com.shatteredpixel.desktop -DImplementation-Version=1' && cd "${repoPath}" && if [ -x ./gradlew ] || [ -f ./gradlew ]; then chmod +x ./gradlew && (./gradlew :desktop:run || ./gradlew desktop:run || ./gradlew lwjgl3:run); else echo "No gradlew found for Shattered Pixel Dungeon."; fi`
+      label: 'Shattered Pixel Dungeon (prebuilt jar + noVNC stream)',
+      command: `mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && if ! pgrep -x Xvfb >/dev/null; then nohup Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 & fi && for i in $(seq 1 25); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done && if ! pgrep -x openbox >/dev/null; then DISPLAY=:99 nohup openbox >/tmp/openbox.log 2>&1 & fi && if ! pgrep -x x11vnc >/dev/null; then x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -noxdamage -repeat -bg -o /tmp/x11vnc.log; fi && if ! lsof -iTCP:6080 -sTCP:LISTEN >/dev/null 2>&1; then websockify --web=/usr/share/novnc/ 6080 localhost:5900 --daemon; fi && mkdir -p "${repoPath}" && cd "${repoPath}" && if [ ! -f ./ShatteredPD.jar ]; then echo "Fetching Shattered Pixel Dungeon prebuilt release..." && JAR_URL=$(curl -sSL https://api.github.com/repos/00-Evan/shattered-pixel-dungeon/releases/latest | grep -o 'https://[^"]*Java\.jar' | head -n1) && curl -sSL -o ./ShatteredPD.jar "$JAR_URL"; fi && export DISPLAY=:99 && exec java -jar ./ShatteredPD.jar`
     };
   }
 
   if (lowerName.includes('cataclysm-dda')) {
     return {
-      label: 'Cataclysm-DDA (Make tiles + noVNC stream)',
-      command: `mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && if ! pgrep -x Xvfb >/dev/null; then nohup Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 & fi && for i in $(seq 1 25); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done && if ! pgrep -x openbox >/dev/null; then DISPLAY=:99 nohup openbox >/tmp/openbox.log 2>&1 & fi && if ! pgrep -x x11vnc >/dev/null; then x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -noxdamage -repeat -bg -o /tmp/x11vnc.log; fi && if ! lsof -iTCP:6080 -sTCP:LISTEN >/dev/null 2>&1; then websockify --web=/usr/share/novnc/ 6080 localhost:5900 --daemon; fi && export DISPLAY=:99 && mkdir -p /tmp/cdda-user && if [ -x /usr/games/cataclysm ]; then exec xterm -fa Monospace -fs 13 -geometry 150x45+20+20 -title 'Cataclysm Curses' -e '/usr/games/cataclysm --basepath /usr --userdir /tmp/cdda-user'; elif [ -x /usr/games/cataclysm-tiles ]; then SDL_AUDIODRIVER=dummy exec /usr/games/cataclysm-tiles --basepath /usr --userdir /tmp/cdda-user; fi && cd "${repoPath}" && RUN_EXE="" && if [ -x ./cataclysm-tiles-sdl ]; then RUN_EXE=./cataclysm-tiles-sdl; elif [ -x ./cataclysm-tiles ]; then RUN_EXE=./cataclysm-tiles; elif [ -x ./cataclysm ]; then RUN_EXE=./cataclysm; elif [ -x ./cataclysm-launcher ]; then RUN_EXE=./cataclysm-launcher; fi && if [ -z "$RUN_EXE" ]; then BUILD_MSG_PID=""; if command -v xmessage >/dev/null 2>&1; then xmessage -center -name CataclysmBuild "Cataclysm-DDA is building (low-memory mode). This can take a while." >/dev/null 2>&1 & BUILD_MSG_PID=$!; fi; make -j1 RELEASE=0 TILES=1 SDL3=0 SOUND=0 USE_XDG_DIR=1; BUILD_EXIT=$?; if [ -n "$BUILD_MSG_PID" ]; then kill "$BUILD_MSG_PID" >/dev/null 2>&1 || true; fi; if [ "$BUILD_EXIT" -ne 0 ]; then exit "$BUILD_EXIT"; fi; if [ -x ./cataclysm-tiles-sdl ]; then RUN_EXE=./cataclysm-tiles-sdl; elif [ -x ./cataclysm-tiles ]; then RUN_EXE=./cataclysm-tiles; elif [ -x ./cataclysm ]; then RUN_EXE=./cataclysm; elif [ -x ./cataclysm-launcher ]; then RUN_EXE=./cataclysm-launcher; fi; fi && if [ -n "$RUN_EXE" ]; then "$RUN_EXE"; else echo "No Cataclysm executable found after build."; fi`
+      label: 'Cataclysm-DDA (prebuilt tiles build + noVNC stream)',
+      command: `mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix && if ! pgrep -x Xvfb >/dev/null; then nohup Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 & fi && for i in $(seq 1 25); do DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done && if ! pgrep -x openbox >/dev/null; then DISPLAY=:99 nohup openbox >/tmp/openbox.log 2>&1 & fi && if ! pgrep -x x11vnc >/dev/null; then x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -noxdamage -repeat -bg -o /tmp/x11vnc.log; fi && if ! lsof -iTCP:6080 -sTCP:LISTEN >/dev/null 2>&1; then websockify --web=/usr/share/novnc/ 6080 localhost:5900 --daemon; fi && mkdir -p "${repoPath}" && cd "${repoPath}" && if [ ! -x ./cataclysm-tiles ]; then echo "Fetching Cataclysm-DDA prebuilt release..." && RELEASE_URL=$(curl -sSL https://api.github.com/repos/CleverRaven/Cataclysm-DDA/releases/latest | grep -o 'https://[^"]*linux-with-graphics-x64[^"]*\.tar\.gz' | head -n1) && curl -sSL -o /tmp/cdda-release.tar.gz "$RELEASE_URL" && tar xzf /tmp/cdda-release.tar.gz -C "${repoPath}" --strip-components=1 && rm -f /tmp/cdda-release.tar.gz; fi && mkdir -p /tmp/cdda-user && export DISPLAY=:99 SDL_AUDIODRIVER=dummy && exec ./cataclysm-tiles --basepath "${repoPath}" --userdir /tmp/cdda-user`
     };
   }
 
@@ -345,8 +350,8 @@ app.post('/api/launch', async (req, res) => {
       return res.status(400).json({ error: 'Choose one of the bundled games to launch.' });
     }
 
-    const targetDir = bundledGame && repoName === 'bitlife' && fs.existsSync(path.join(GAMES_ROOT, repoName))
-      ? path.join(GAMES_ROOT, repoName)
+    const targetDir = SELF_CONTAINED_GAMES.has(repoName)
+      ? (fs.mkdirSync(path.join(GAMES_ROOT, repoName), { recursive: true }), path.join(GAMES_ROOT, repoName))
       : prepareRepoDir(repoName);
     const logFile = path.join(GAMES_ROOT, `${repoName}.log`);
 
@@ -385,19 +390,18 @@ app.post('/api/launch', async (req, res) => {
 
     (async () => {
       try {
-        if (!bundledGame || targetDir !== path.join(GAMES_ROOT, 'bitlife')) {
+        if (!SELF_CONTAINED_GAMES.has(repoName)) {
           // Git refuses to clone into an existing non-empty directory. Make sure the target
           // is absent or already a valid repo before trying to clone or pull.
-          const launchRepoUrl = bundledGame ? bundledGame.repoUrl : repoUrl;
           if (!fs.existsSync(path.join(targetDir, '.git'))) {
-            appendLog(logFile, `Cloning ${launchRepoUrl}\n`);
-            await cloneRepo(launchRepoUrl, repoName);
+            appendLog(logFile, `Cloning ${repoUrl}\n`);
+            await cloneRepo(repoUrl, repoName);
           } else {
             appendLog(logFile, `Repository exists, syncing with remote\n`);
-            await cloneRepo(launchRepoUrl, repoName);
+            await cloneRepo(repoUrl, repoName);
           }
         } else {
-          appendLog(logFile, `Using bundled game ${repoName}\n`);
+          appendLog(logFile, `Using self-contained launch for ${repoName}\n`);
         }
 
         const runPlan = detectBuildCommand(targetDir, repoName);
