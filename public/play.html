@@ -296,7 +296,9 @@
           fetch(`/api/games/${encodeURIComponent(repo)}?t=${Date.now()}`)
             .then((response) => {
               if (response.status === 404) {
-                throw new Error('not-found');
+                return response.json().then((body) => {
+                  throw new Error(body && body.error ? body.error : 'not-found');
+                });
               }
               return response.json();
             })
@@ -337,7 +339,13 @@
               gameArea.innerHTML = `<div class="status-box"><p><strong>${repo}</strong> was cloned locally, but no runnable executable was detected.</p><p>You can still inspect the project files at <a href="${gameRoot}" target="_blank" style="color:#76e4ff">${gameRoot}</a>.</p></div>`;
               status.textContent = 'No executable found';
             })
-            .catch(() => {
+            .catch((error) => {
+              const isKnownLimit = error && error.message && error.message !== 'not-found';
+              if (isKnownLimit) {
+                gameArea.innerHTML = `<div class="status-box"><p>${error.message}</p></div>`;
+                status.textContent = 'Game could not start';
+                return;
+              }
               if (attempt < maxAttempts) {
                 status.textContent = 'Waiting for game files to be cloned...';
                 setTimeout(pollGameInfo, 2000);

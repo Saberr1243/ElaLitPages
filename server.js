@@ -473,6 +473,15 @@ app.get('/api/games/:repoName', (req, res) => {
   const repoPath = path.join(GAMES_ROOT, repoName);
 
   if (!fs.existsSync(repoPath)) {
+    const activeEntry = ACTIVE_GAMES.get(repoName);
+    if (!activeEntry && needsStream(repoName)) {
+      // The repo/process vanished entirely after a "starting" state, which on the
+      // free hosting plan usually means the instance ran out of memory or disk
+      // while cloning/running this native game and restarted.
+      return res.status(404).json({
+        error: 'This game needs more memory/disk than the current hosting plan provides, so the process was stopped. Try a smaller game like BitLife, or host on a plan with more resources.'
+      });
+    }
     return res.status(404).json({ error: 'Repo not found.' });
   }
 
